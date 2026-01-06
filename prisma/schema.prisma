@@ -1,0 +1,46 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+}
+
+enum Role {
+    ADMIN
+    VISITOR
+}
+
+model User {
+    id           Int      @id @default(autoincrement())
+    email        String   @unique
+    passwordHash String   @map("password_hash")
+    name         String
+    role         Role     @default(VISITOR)
+    tokenVersion String   @default(uuid()) @map("token_version")
+    createdAt    DateTime @default(now()) @map("created_at")
+    updatedAt    DateTime @updatedAt @map("updated_at")
+
+    articles Article[]
+
+    @@map("users")
+}
+
+model Article {
+    id          Int       @id @default(autoincrement())
+    title       String
+    slug        String    @unique
+    summary     String?   @db.VarChar(1000)
+    content     String
+    coverUrl    String?   @map("cover_url")
+    published   Boolean   @default(false)
+    publishedAt DateTime? @map("published_at")
+    authorId    Int       @map("author_id")
+    createdAt   DateTime  @default(now()) @map("created_at")
+    updatedAt   DateTime  @updatedAt @map("updated_at")
+
+    author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+    @@index([published, publishedAt])
+    @@map("articles")
+}
