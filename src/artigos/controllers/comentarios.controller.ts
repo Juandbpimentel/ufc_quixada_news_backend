@@ -102,7 +102,9 @@ export class ComentariosController {
 
   // Reactions for comments
   @Get('news/:articleId/comentarios/:comentarioId/reacoes')
-  @ApiOperation({ summary: 'Public: Obter contagem de reações de um comentário' })
+  @ApiOperation({
+    summary: 'Public: Obter contagem de reações de um comentário',
+  })
   getCommentReactions(
     @Param('articleId', ParseIntPipe) articleId: number,
     @Param('comentarioId', ParseIntPipe) comentarioId: number,
@@ -113,54 +115,77 @@ export class ComentariosController {
   @Get('news/:articleId/comentarios/:comentarioId/reacao')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Autenticado: Obter reação do usuário para um comentário' })
+  @ApiOperation({
+    summary: 'Autenticado: Obter reação do usuário para um comentário',
+  })
   getMyCommentReaction(
     @Param('articleId', ParseIntPipe) articleId: number,
     @Param('comentarioId', ParseIntPipe) comentarioId: number,
     @CurrentUser() user: Usuario,
   ) {
-    return this.comentariosService.getUserCommentReactionRecord(user.id, comentarioId);
+    return this.comentariosService.getUserCommentReactionRecord(
+      user.id,
+      comentarioId,
+    );
   }
 
   @Post('news/:articleId/comentarios/:comentarioId/reacoes')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Autenticado: Criar/Atualizar reação em um comentário' })
-  @ApiBody({ type: (require('../dtos/atualizar-comentario-reacao.dto').AtualizarComentarioReacaoDto) })
+  @ApiOperation({
+    summary: 'Autenticado: Criar/Atualizar reação em um comentário',
+  })
+  @ApiBody({
+    type: require('../dtos/atualizar-comentario-reacao.dto')
+      .AtualizarComentarioReacaoDto,
+  })
   createCommentReaction(
     @Param('articleId', ParseIntPipe) articleId: number,
     @Param('comentarioId', ParseIntPipe) comentarioId: number,
     @CurrentUser() user: Usuario,
     @Body() dto: AtualizarComentarioReacaoDto,
   ) {
-    return this.comentariosService.createCommentReaction(user.id, comentarioId, dto.tipo);
+    return this.comentariosService.createCommentReaction(
+      user.id,
+      comentarioId,
+      dto.tipo,
+    );
   }
 
   @Delete('news/:articleId/comentarios/:comentarioId/reacoes')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Autenticado: Remover própria reação do comentário' })
+  @ApiOperation({
+    summary: 'Autenticado: Remover própria reação do comentário',
+  })
   deleteMyCommentReaction(
     @Param('articleId', ParseIntPipe) articleId: number,
     @Param('comentarioId', ParseIntPipe) comentarioId: number,
     @CurrentUser() user: Usuario,
   ) {
-    return this.comentariosService.deleteCommentReactionByUser(user.id, comentarioId);
+    return this.comentariosService.deleteCommentReactionByUser(
+      user.id,
+      comentarioId,
+    );
   }
 
   @Delete('news/:articleId/comentarios/:comentarioId/reacoes/:reacaoId')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Autenticado: Remover reação (própria ou por admin)' })
+  @ApiOperation({
+    summary: 'Autenticado: Remover reação (própria ou por admin)',
+  })
   async deleteCommentReaction(
     @Param('articleId', ParseIntPipe) articleId: number,
     @Param('comentarioId', ParseIntPipe) comentarioId: number,
     @Param('reacaoId', ParseIntPipe) reacaoId: number,
     @CurrentUser() user: Usuario,
   ) {
-    const reacao = await this.comentariosService.getCommentReactionById(reacaoId);
+    const reacao =
+      await this.comentariosService.getCommentReactionById(reacaoId);
     if (!reacao) return { ok: false };
-    if (reacao.usuarioId !== user.id && !user.isAdmin) throw new Error('Acesso negado');
+    if (reacao.usuarioId !== user.id && !user.isAdmin)
+      throw new Error('Acesso negado');
     await this.comentariosService.deleteCommentReaction(reacaoId);
     return { ok: true };
   }
