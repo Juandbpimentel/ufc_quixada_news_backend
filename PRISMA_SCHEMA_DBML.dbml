@@ -1,0 +1,180 @@
+// Prisma schema converted to DBML for use with https://dbdiagram.io/
+
+Enum Papel {
+  ADMINISTRADOR
+  VISITANTE
+  ESTUDANTE
+  BOLSISTA
+  PROFESSOR
+  TECNICO_ADMINISTRATIVO
+}
+
+Enum CategoriaArtigo {
+  EVENTOS
+  OPORTUNIDADES
+  PESQUISA
+  PROJETOS
+  AVISOS
+  OUTROS
+}
+
+Enum TipoReacao {
+  CURTIDA
+  AMEI
+  TRISTE
+  SURPRESO
+  PARABENS
+}
+
+Enum SessaoTipo {
+  PARAGRAFO
+  TOPICO
+  IMAGEM
+}
+
+Enum StatusSolicitacao {
+  PENDENTE
+  ACEITA
+  REJEITADA
+}
+
+Enum SolicitacaoTipo {
+  PROFESSOR
+  TECNICO
+  BOLSISTA
+}
+
+Table usuarios {
+  id int [pk, increment]
+  login varchar [unique]
+  email varchar [unique]
+  senhaHash varchar
+  nome varchar
+  papel Papel [default: 'VISITANTE']
+  versaoToken uuid [default: 'uuid()']
+  criadoEm timestamp [default: 'now()']
+  atualizadoEm timestamp
+  isAdmin boolean [default: 'false']
+}
+
+Table artigos {
+  id int [pk, increment]
+  titulo varchar
+  slug varchar [unique]
+  resumo varchar(1000)
+  conteudo text
+  categoria CategoriaArtigo
+  capaUrl varchar
+  publicado boolean [default: 'false']
+  publicadoEm timestamp
+  autorId int
+  criadoEm timestamp [default: 'now()']
+  atualizadoEm timestamp
+
+  Indexes {
+    (publicado, publicadoEm)
+  }
+}
+
+Table reacoes {
+  id int [pk, increment]
+  tipo TipoReacao
+  usuarioId int
+  artigoId int
+  criadoEm timestamp [default: 'now()']
+
+  Indexes {
+    (usuarioId, artigoId) [unique]
+  }
+}
+
+Table Comentario {
+  id int [pk, increment]
+  conteudo varchar(500)
+  autorId int
+  usuarioId int
+  artigoId int
+  comentarioPaiId int
+  criadoEm timestamp [default: 'now()']
+}
+
+Table artigo_sessoes {
+  id int [pk, increment]
+  artigoId int
+  ordem int
+  tipo SessaoTipo
+  texto varchar(2000)
+  imagemUrl varchar
+  criadoEm timestamp [default: 'now()']
+  atualizadoEm timestamp
+
+  Indexes {
+    (artigoId, ordem)
+  }
+}
+
+Table bolsistas {
+  id int [pk, increment]
+  usuarioId int [unique]
+  programaBolsista varchar
+  criadoEm timestamp [default: 'now()']
+  atualizadoEm timestamp
+}
+
+Table solicitacoes {
+  id int [pk, increment]
+  usuarioId int
+  tipo SolicitacaoTipo
+  mensagem varchar
+  status StatusSolicitacao [default: 'PENDENTE']
+  criadoEm timestamp [default: 'now()']
+  atualizadoEm timestamp
+  aprovadorId int
+
+  Indexes {
+    (status)
+    (usuarioId) [unique]
+  }
+}
+
+Table professores {
+  id int [pk, increment]
+  usuarioId int [unique]
+  criadoEm timestamp [default: 'now()']
+  atualizadoEm timestamp
+}
+
+Table tecnicos_administrativos {
+  id int [pk, increment]
+  usuarioId int [unique]
+  criadoEm timestamp [default: 'now()']
+  atualizadoEm timestamp
+}
+
+Table password_reset_tokens {
+  id int [pk, increment]
+  usuarioId int
+  token varchar [unique]
+  expiresAt timestamp
+  used boolean [default: 'false']
+  criadoEm timestamp [default: 'now()']
+
+  Indexes {
+    (usuarioId)
+  }
+}
+
+// Relations (refs)
+Ref: artigos.autorId > usuarios.id [delete: cascade]
+Ref: reacoes.usuarioId > usuarios.id [delete: cascade]
+Ref: reacoes.artigoId > artigos.id [delete: cascade]
+Ref: Comentario.autorId > usuarios.id [delete: cascade]
+Ref: Comentario.artigoId > artigos.id [delete: cascade]
+Ref: Comentario.comentarioPaiId > Comentario.id [delete: cascade]
+Ref: artigo_sessoes.artigoId > artigos.id [delete: cascade]
+Ref: bolsistas.usuarioId > usuarios.id [delete: cascade]
+Ref: solicitacoes.usuarioId > usuarios.id [delete: cascade]
+Ref: solicitacoes.aprovadorId > usuarios.id [delete: set null]
+Ref: professores.usuarioId > usuarios.id [delete: cascade]
+Ref: tecnicos_administrativos.usuarioId > usuarios.id [delete: cascade]
+Ref: password_reset_tokens.usuarioId > usuarios.id [delete: cascade]

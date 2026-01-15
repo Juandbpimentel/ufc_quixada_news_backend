@@ -6,41 +6,205 @@ datasource db {
     provider = "postgresql"
 }
 
-enum Role {
-    ADMIN
-    VISITOR
+enum Papel {
+    ADMINISTRADOR
+    VISITANTE
+    ESTUDANTE
+    BOLSISTA
+    PROFESSOR
+    TECNICO_ADMINISTRATIVO
 }
 
-model User {
+enum CategoriaArtigo {
+    EVENTOS
+    OPORTUNIDADES
+    PESQUISA
+    PROJETOS
+    AVISOS
+    OUTROS
+}
+
+enum TipoReacao {
+    CURTIDA
+    AMEI
+    TRISTE
+    SURPRESO
+    PARABENS
+}
+
+enum StatusSolicitacao {
+    PENDENTE
+    ACEITA
+    REJEITADA
+}
+
+enum SolicitacaoTipo {
+    PROFESSOR
+    TECNICO
+    BOLSISTA
+}
+
+model Usuario {
     id           Int      @id @default(autoincrement())
+    login        String   @unique
     email        String   @unique
-    passwordHash String   @map("password_hash")
-    name         String
-    role         Role     @default(VISITOR)
-    tokenVersion String   @default(uuid()) @map("token_version")
-    createdAt    DateTime @default(now()) @map("created_at")
-    updatedAt    DateTime @updatedAt @map("updated_at")
+    senhaHash    String
+    nome         String
+    papel        Papel    @default(VISITANTE)
+    versaoToken  String   @default(uuid())
+    criadoEm     DateTime @default(now())
+    atualizadoEm DateTime @updatedAt
 
-    articles Article[]
+    artigos               Artigo[]
+    bolsista              Bolsista?
+    professor             Professor?
+    tecnicoAdministrativo TecnicoAdministrativo?
+    reacoes               Reacao[]
+    comentarios           Comentario[]
+    isAdmin               Boolean                @default(false)
+    solicitacao           Solicitacao?
+    solicitacoesAprovadas Solicitacao[]          @relation("SolicitacaoAprovador")
+    passwordResetTokens   PasswordResetToken[]
 
-    @@map("users")
+    // nenhum array de solicitações aqui (aplicação irá checar quem pode aprovar)
+    @@map("usuarios")
 }
 
-model Article {
-    id          Int       @id @default(autoincrement())
-    title       String
-    slug        String    @unique
-    summary     String?   @db.VarChar(1000)
-    content     String
-    coverUrl    String?   @map("cover_url")
-    published   Boolean   @default(false)
-    publishedAt DateTime? @map("published_at")
-    authorId    Int       @map("author_id")
-    createdAt   DateTime  @default(now()) @map("created_at")
-    updatedAt   DateTime  @updatedAt @map("updated_at")
+model Artigo {
+    id           Int             @id @default(autoincrement())
+    titulo       String
+    slug         String          @unique
+    resumo       String?         @db.VarChar(1000)
+    conteudo     String
+    categoria    CategoriaArtigo
+    capaUrl      String?
+    publicado    Boolean         @default(false)
+    publicadoEm  DateTime?
+    autorId      Int
+    criadoEm     DateTime        @default(now())
+    atualizadoEm DateTime        @updatedAt
 
-    author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+    autor       Usuario        @relation(fields: [autorId], references: [id], onDelete: Cascade)
+    reacoes     Reacao[]
+    comentarios Comentario[]
+    sessoes     ArtigoSessao[]
 
-    @@index([published, publishedAt])
-    @@map("articles")
+    @@index([publicado, publicadoEm])
+    @@map("artigos")
+}
+
+model Reacao {
+    id        Int        @id @default(autoincrement())
+    tipo      TipoReacao
+    usuarioId Int
+    artigoId  Int
+    criadoEm  DateTime   @default(now())
+
+    usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+    artigo  Artigo  @relation(fields: [artigoId], references: [id], onDelete: Cascade)
+
+    @@unique([usuarioId, artigoId])
+    @@map("reacoes")
+}
+
+model Comentario {
+    id              Int      @id @default(autoincrement())
+    conteudo        String   @db.VarChar(500)
+    autorId         Int
+    usuarioId       Int
+    artigoId        Int
+    comentarioPaiId Int?
+    criadoEm        DateTime @default(now())
+
+    autor         Usuario      @relation(fields: [autorId], references: [id], onDelete: Cascade)
+    artigo        Artigo       @relation(fields: [artigoId], references: [id], onDelete: Cascade)
+    respostas     Comentario[] @relation("ComentarioRespostas")
+    comentarioPai Comentario?  @relation("ComentarioRespostas", fields: [comentarioPaiId], references: [id], onDelete: Cascade)
+}
+
+enum SessaoTipo {
+    PARAGRAFO
+    TOPICO
+    IMAGEM
+}
+
+model ArtigoSessao {
+    id           Int        @id @default(autoincrement())
+    artigoId     Int
+    ordem        Int
+    tipo         SessaoTipo
+    texto        String?    @db.VarChar(2000)
+    imagemUrl    String?
+    criadoEm     DateTime   @default(now())
+    atualizadoEm DateTime   @updatedAt
+
+    artigo Artigo @relation(fields: [artigoId], references: [id], onDelete: Cascade)
+
+    @@index([artigoId, ordem])
+    @@map("artigo_sessoes")
+}
+
+model Bolsista {
+    id               Int      @id @default(autoincrement())
+    usuarioId        Int      @unique
+    usuario          Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+    programaBolsista String?
+    criadoEm         DateTime @default(now())
+    atualizadoEm     DateTime @updatedAt
+
+    @@map("bolsistas")
+}
+
+model Solicitacao {
+    id           Int               @id @default(autoincrement())
+    usuarioId    Int
+    tipo         SolicitacaoTipo
+    mensagem     String?
+    status       StatusSolicitacao @default(PENDENTE)
+    criadoEm     DateTime          @default(now())
+    atualizadoEm DateTime          @updatedAt
+    aprovadorId  Int?
+
+    usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+    aprovador Usuario? @relation("SolicitacaoAprovador", fields: [aprovadorId], references: [id], onDelete: SetNull)
+
+    @@unique([usuarioId])
+    @@index([status])
+    @@map("solicitacoes")
+}
+
+model Professor {
+    id           Int      @id @default(autoincrement())
+    usuarioId    Int      @unique
+    usuario      Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+    criadoEm     DateTime @default(now())
+    atualizadoEm DateTime @updatedAt
+
+    // consultas sobre solicitações podem ser feitas filtrando Solicitacao.tipo/status
+    @@map("professores")
+}
+
+model TecnicoAdministrativo {
+    id           Int      @id @default(autoincrement())
+    usuarioId    Int      @unique
+    usuario      Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+    criadoEm     DateTime @default(now())
+    atualizadoEm DateTime @updatedAt
+
+    // consultas sobre solicitações podem ser feitas filtrando Solicitacao.tipo/status
+    @@map("tecnicos_administrativos")
+}
+
+model PasswordResetToken {
+    id        Int      @id @default(autoincrement())
+    usuarioId Int
+    token     String   @unique
+    expiresAt DateTime
+    used      Boolean  @default(false)
+    criadoEm  DateTime @default(now())
+
+    usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+    @@index([usuarioId])
+    @@map("password_reset_tokens")
 }

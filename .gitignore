@@ -22,3 +22,5 @@ lerna-debug.log*
 # temp directory
 .temp
 .tmp
+ufc-news-quixada-27a85e33616f.json
+coverage
