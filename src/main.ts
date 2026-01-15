@@ -40,6 +40,7 @@ async function bootstrap() {
     .setTitle('UFC Quixadá News API')
     .setDescription('API do jornal de notícias (admin + público)')
     .setVersion('1.0')
+    .addServer(process.env.PUBLIC_API_URL || `http://localhost:${port}`)
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
@@ -50,6 +51,7 @@ async function bootstrap() {
     const swaggerDocService = app.get(SwaggerDocumentService);
     swaggerDocService.setDocument(document);
   } catch (err) {
+    Logger.error(err);
     // if the service is not available for some reason, ignore
   }
 
