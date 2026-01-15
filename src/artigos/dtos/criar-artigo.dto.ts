@@ -26,13 +26,14 @@ export class CriarArtigoDto {
   @IsString()
   resumo?: string;
 
-  @ApiProperty({
-    description: 'Conteúdo completo da notícia (texto)',
-    example: 'Conteúdo completo com parágrafos, imagens e descrições.',
+  @ApiPropertyOptional({
+    description:
+      'Slug amigável para URL. Se não informado, será gerado a partir do título',
+    example: 'novo-projeto-ia',
   })
+  @IsOptional()
   @IsString()
-  @MinLength(10)
-  conteudo!: string;
+  slug?: string;
 
   @ApiPropertyOptional({
     description:

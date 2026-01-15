@@ -162,6 +162,33 @@ export class ArtigosController {
     return this.artigosService.getPublicBySlug(slug);
   }
 
+  @Get(':slug/preview')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Autenticado: Obter pré-visualização de artigo (requer papel adequado)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Artigo (mesmo se não publicado)',
+    type: ArticleResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Usuário não autenticado' })
+  @ApiResponse({ status: 403, description: 'Sem permissão' })
+  getPreview(@Param('slug') slug: string, @CurrentUser() user: Usuario) {
+    const allowed = [
+      'ADMINISTRADOR',
+      'BOLSISTA',
+      'PROFESSOR',
+      'TECNICO_ADMINISTRATIVO',
+    ];
+    if (!user || !allowed.includes(user.papel)) {
+      throw new Error('Sem permissão');
+    }
+    return this.artigosService.getBySlugForPreview(slug);
+  }
+
   // Reações
   @Get(':id/reacoes')
   @ApiOperation({ summary: 'Public: Obter contagem de reações por tipo' })
@@ -173,6 +200,21 @@ export class ArtigosController {
   })
   getReactions(@Param('id') id: string) {
     return this.artigosService.getReactionCounts(Number(id));
+  }
+
+  @Get(':id/reacao')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Autenticado: Obter reação do usuário para um artigo',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Tipo de reação do usuário ou null',
+  })
+  getUserReaction(@Param('id') id: string, @CurrentUser() user: Usuario) {
+    // return the whole reaction record for the current user: { id, tipo } or null
+    return this.artigosService.getUserReactionRecord(user.id, Number(id));
   }
 
   @Post(':id/reacoes')

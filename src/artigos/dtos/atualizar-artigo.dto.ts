@@ -28,13 +28,12 @@ export class AtualizarArtigoDto {
   resumo?: string;
 
   @ApiPropertyOptional({
-    description: 'Conteúdo completo da notícia (texto)',
-    example: 'Conteúdo atualizado',
+    description: 'Slug amigável para URL (opcional) — será gerado a partir do título se não informado',
+    example: 'titulo-personalizado',
   })
   @IsOptional()
   @IsString()
-  @MinLength(10)
-  conteudo?: string;
+  slug?: string;
 
   @ApiPropertyOptional({
     description: 'URL da imagem de capa (pública)',

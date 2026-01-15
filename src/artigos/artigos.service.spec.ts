@@ -43,7 +43,6 @@ describe('ArtigosService', () => {
         titulo: 'a',
         slug: 'a',
         resumo: '',
-        conteudo: '',
         capaUrl: null,
         categoria: 'OUTROS',
         publicado: true,
@@ -51,6 +50,7 @@ describe('ArtigosService', () => {
         autorId: 1,
         sessoes: [],
       },
+
     ]);
     mockPrisma.reacao.groupBy.mockResolvedValueOnce([
       { tipo: 'CURTIDA', _count: { tipo: 3 } },
@@ -72,11 +72,10 @@ describe('ArtigosService', () => {
     const dto: any = {
       titulo: 'Valid',
       resumo: '',
-      conteudo: '',
       artigoSessoes: [
         {
           ordem: 1,
-          tipo: 'TEXTO',
+          tipo: 'PARAGRAFO',
           texto: 'x',
           imagemUrl: 'data:image/png;base64,AAA',
         },

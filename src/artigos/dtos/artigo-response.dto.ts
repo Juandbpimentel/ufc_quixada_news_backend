@@ -21,12 +21,6 @@ export class ArticleResponseDto {
   })
   resumo?: string;
 
-  @ApiProperty({
-    example: 'Conteúdo completo',
-    description: 'Conteúdo completo do artigo',
-  })
-  conteudo!: string;
-
   @ApiProperty({ example: 'EVENTOS', description: 'Categoria do artigo' })
   categoria!: string;
 

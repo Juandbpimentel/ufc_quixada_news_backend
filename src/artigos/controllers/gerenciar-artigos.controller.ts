@@ -9,6 +9,7 @@ import {
   Post,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -74,7 +75,7 @@ export class GerenciarArtigosController {
   @ApiQuery({
     name: 'busca',
     required: false,
-    description: 'Termo para busca em título/resumo/conteúdo',
+    description: 'Termo para busca em título/resumo/sessões',
   })
   @ApiQuery({
     name: 'autorId',
@@ -165,6 +166,27 @@ export class GerenciarArtigosController {
     });
   }
 
+  @Get('slug-available')
+  @ApiOperation({ summary: 'Gerenciar: Verifica disponibilidade de slug' })
+  @ApiResponse({ status: 200, description: 'Disponibilidade do slug' })
+  @ApiQuery({ name: 'slug', required: true })
+  @ApiQuery({ name: 'ignoreId', required: false })
+  async slugAvailable(
+    @Query('slug') slug: string,
+    @Query('ignoreId') ignoreId?: string,
+  ) {
+    let ignore: number | undefined = undefined;
+    if (typeof ignoreId === 'string' && ignoreId.trim() !== '') {
+      const parsed = Number(ignoreId);
+      if (Number.isNaN(parsed)) {
+        throw new BadRequestException('ignoreId inválido (esperado número)');
+      }
+      ignore = parsed;
+    }
+    const available = await this.artigosService.isSlugAvailable(slug, ignore);
+    return { available };
+  }
+
   @Post()
   @ApiOperation({
     summary: 'Gerenciar: Criar artigo (requer papel apropriado)',
@@ -185,6 +207,16 @@ export class GerenciarArtigosController {
     return this.artigosService.create(user.id, dto);
   }
 
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Gerenciar: Obter artigo por id (com sessões)',
+  })
+  @ApiResponse({ status: 200, description: 'Artigo', type: ArticleResponseDto })
+  @ApiResponse({ status: 404, description: 'Artigo não encontrado' })
+  get(@Param('id', ParseIntPipe) id: number) {
+    return this.artigosService.getById(id);
+  }
+
   @Patch(':id')
   @ApiOperation({
     summary: 'Gerenciar: Atualiza artigo (requer papel apropriado)',
@@ -194,8 +226,9 @@ export class GerenciarArtigosController {
     schema: {
       example: {
         titulo: 'Título atualizado do artigo',
+        slug: 'titulo-atualizado',
         resumo: 'Resumo atualizado',
-        conteudo: 'Conteúdo atualizado',
+        capaUrl: 'https://storage.example.com/artigo/capa.jpg',
         publicado: true,
         categoria: 'EVENTOS',
         artigoSessoes: [

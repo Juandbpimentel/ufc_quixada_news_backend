@@ -62,7 +62,6 @@ Table artigos {
   titulo varchar
   slug varchar [unique]
   resumo varchar(1000)
-  conteudo text
   categoria CategoriaArtigo
   capaUrl varchar
   publicado boolean [default: 'false']

@@ -32,7 +32,15 @@ export class ComentarioResponseDto {
   comentarioPaiId?: number;
 
   @ApiProperty({
-    description: 'Respostas (comentários filhos), aninhadas',
+    description:
+      'ID do comentário a que este comentário está respondendo (pode ser filho de um pai comum)',
+    required: false,
+    example: 7,
+  })
+  respondeAId?: number;
+
+  @ApiProperty({
+    description: 'Respostas (comentários filhos), aninhadas (apenas um nível)',
     type: [ComentarioResponseDto],
     required: false,
   })

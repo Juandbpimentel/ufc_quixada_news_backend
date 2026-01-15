@@ -46,7 +46,11 @@ export class ArtigosService {
       where.OR = [
         { titulo: { contains: params.busca, mode: 'insensitive' } },
         { resumo: { contains: params.busca, mode: 'insensitive' } },
-        { conteudo: { contains: params.busca, mode: 'insensitive' } },
+        {
+          sessoes: {
+            some: { texto: { contains: params.busca, mode: 'insensitive' } },
+          },
+        },
       ];
     }
     if (typeof params?.autorId === 'number') {
@@ -172,6 +176,24 @@ export class ArtigosService {
     return this.prisma.reacao.findUnique({ where: { id: reacaoId } });
   }
 
+  async getUserReaction(usuarioId: number, artigoId: number) {
+    const r = await this.prisma.reacao.findFirst({
+      where: { usuarioId, artigoId },
+    });
+    return r ? r.tipo : null;
+  }
+
+  /**
+   * Returns the reaction record for a given user and article, or null
+   * { id, tipo } | null - useful for the frontend to know the specific reaction id
+   */
+  async getUserReactionRecord(usuarioId: number, artigoId: number) {
+    const r = await this.prisma.reacao.findFirst({
+      where: { usuarioId, artigoId },
+      select: { id: true, tipo: true },
+    });
+    return r ? { id: r.id, tipo: r.tipo } : null;
+  }
   async deleteReaction(reacaoId: number) {
     return this.prisma.reacao.delete({ where: { id: reacaoId } });
   }
@@ -214,8 +236,9 @@ export class ArtigosService {
   }
 
   async getPublicBySlug(slug: string) {
+    const normalized = slugify(slug);
     const article = await this.prisma.artigo.findFirst({
-      where: { slug, publicado: true },
+      where: { slug: normalized, publicado: true },
       include: {
         autor: { select: { id: true, nome: true } },
         sessoes: { orderBy: { ordem: 'asc' } },
@@ -229,9 +252,44 @@ export class ArtigosService {
     };
   }
 
+  async getBySlugForPreview(slug: string) {
+    const normalized = slugify(slug);
+    const article = await this.prisma.artigo.findFirst({
+      where: { slug: normalized },
+      include: {
+        autor: { select: { id: true, nome: true } },
+        sessoes: { orderBy: { ordem: 'asc' } },
+      },
+    });
+    if (!article) throw new NotFoundException('Notícia não encontrada');
+
+    const reacoes = await this.getReactionCounts(article.id);
+    return { ...article, reacoes } as ArtigoWithSessions & {
+      reacoes?: Record<string, number>;
+    };
+  }
+
+  async isSlugAvailable(slug: string, ignoreId?: number) {
+    const normalized = slugify(slug);
+    if (!normalized) return false;
+    const found = await this.prisma.artigo.findFirst({
+      where: {
+        slug: normalized,
+        ...(typeof ignoreId === 'number' ? { NOT: { id: ignoreId } } : {}),
+      },
+      select: { id: true },
+    });
+    return !found;
+  }
+
   async create(authorId: number, data: CriarArtigoDto): Promise<Artigo> {
-    const baseSlug = slugify(data.titulo);
-    if (!baseSlug) throw new BadRequestException('Título inválido');
+    // allow optional custom slug; otherwise generate from title
+    const rawSlug =
+      typeof data.slug === 'string' && data.slug.trim() !== ''
+        ? data.slug
+        : data.titulo;
+    const baseSlug = slugify(rawSlug);
+    if (!baseSlug) throw new BadRequestException('Título/slug inválido');
 
     const existing = await this.prisma.artigo.findUnique({
       where: { slug: baseSlug },
@@ -245,7 +303,6 @@ export class ArtigosService {
         titulo: data.titulo,
         slug,
         resumo: data.resumo,
-        conteudo: data.conteudo,
         capaUrl: data.capaUrl,
         categoria: data.categoria,
         publicado: shouldPublish,
@@ -303,12 +360,23 @@ export class ArtigosService {
     const nextPublished =
       typeof data.publicado === 'boolean' ? data.publicado : existing.publicado;
 
+    // if slug provided, normalize and ensure uniqueness
+    let nextSlug: string | undefined = undefined;
+    if (data.slug) {
+      const s = slugify(data.slug);
+      if (!s) throw new BadRequestException('Slug inválido');
+      const exists = await this.prisma.artigo.findFirst({
+        where: { slug: s, NOT: { id } },
+      });
+      nextSlug = exists ? `${s}-${Date.now()}` : s;
+    }
+
     const updated = await this.prisma.artigo.update({
       where: { id },
       data: {
         titulo: data.titulo,
         resumo: data.resumo,
-        conteudo: data.conteudo,
+        slug: nextSlug ?? undefined,
         capaUrl: data.capaUrl,
         publicado: nextPublished,
         categoria: data.categoria,
@@ -355,6 +423,16 @@ export class ArtigosService {
     }
 
     return updated;
+  }
+
+  async getById(id: number) {
+    const article = await this.prisma.artigo.findUnique({
+      where: { id },
+      include: { sessoes: { orderBy: { ordem: 'asc' } } },
+    });
+    if (!article) throw new NotFoundException('Notícia não encontrada');
+    const reacoes = await this.getReactionCounts(article.id);
+    return { ...article, reacoes };
   }
 
   async remove(id: number): Promise<Artigo> {

@@ -55,3 +55,11 @@ Nota sobre o seed (admin inicial) 🔐
 - `npm run start:dev`
 
 Swagger: `http://localhost:8080/docs`
+
+---
+
+Important: Content sessions migration
+
+- The `conteudo` field was removed. Existing article content will be migrated into `artigo_sessoes` as a single `PARAGRAFO` session by the new migration.
+- To apply locally: `npx prisma migrate dev --name remove-conteudo` (or `npx prisma migrate deploy` in production).
+

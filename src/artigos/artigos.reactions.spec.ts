@@ -54,4 +54,14 @@ describe('ArtigosService - Reactions', () => {
     const counts = await svc.getReactionCounts(10);
     expect(counts['CURTIDA']).toBe(3);
   });
+
+  test('getUserReaction returns tipo or null', async () => {
+    mockPrisma.reacao.findFirst.mockResolvedValue({ id: 5, tipo: 'AMEI' });
+    const t = await svc.getUserReaction(2, 10);
+    expect(t).toBe('AMEI');
+
+    mockPrisma.reacao.findFirst.mockResolvedValue(null);
+    const n = await svc.getUserReaction(2, 10);
+    expect(n).toBeNull();
+  });
 });

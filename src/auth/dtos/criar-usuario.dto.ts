@@ -31,6 +31,6 @@ export class CriarUsuarioDto {
   })
   senha!: string;
 
-  @IsIn(['estudante', 'docente', 'servidor', 'bolsista'])
-  perfil!: 'estudante' | 'docente' | 'servidor' | 'bolsista';
+  @IsIn(['estudante', 'docente', 'servidor', 'bolsista', 'visitante'])
+  perfil!: 'estudante' | 'docente' | 'servidor' | 'bolsista' | 'visitante';
 }
