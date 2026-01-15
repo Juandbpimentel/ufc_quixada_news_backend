@@ -1,6 +1,6 @@
 import { Request as ExpressRequest } from 'express';
-import { User } from '@prisma/client';
+import { Usuario } from '@prisma/client';
 
 export type AuthenticatedRequest = ExpressRequest & {
-  user: User;
+  user: Usuario;
 };

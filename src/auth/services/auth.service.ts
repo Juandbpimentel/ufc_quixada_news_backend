@@ -1,84 +1,134 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { UsersService } from '@/users/users.service';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
+import { UsuariosService } from '@/users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { User } from '@prisma/client';
-import { CreateUserDto } from '@/auth/dtos/create-user.dto';
+import { Usuario } from '@prisma/client';
+import { CriarUsuarioDto } from '@/auth/dtos/criar-usuario.dto';
 import { LoginRequestDto } from '@/auth/dtos/login-request.dto';
-import { AUTH_COOKIE_NAME } from '@/auth/auth.constants';
+import { SolicitacoesService } from '@/users/solicitacoes.service';
 
-type PublicUser = Omit<User, 'passwordHash'>;
+type PublicUser = Omit<Usuario, 'senhaHash'>;
 
 export type AuthResult = {
-  [AUTH_COOKIE_NAME]: string;
+  token: string;
   user: PublicUser;
 };
 
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly usersService: UsersService,
+    private readonly usuariosService: UsuariosService,
     private readonly jwtService: JwtService,
+    private readonly solicitacoesService: SolicitacoesService,
   ) {}
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
   }
 
-  private signToken(user: User) {
+  private normalizeLogin(login: string): string {
+    return login.trim().toLowerCase();
+  }
+
+  private signToken(user: Usuario) {
     const payload = {
       id: user.id,
+      login: user.login,
       email: user.email,
-      name: user.name,
-      role: user.role,
-      tokenVersion: user.tokenVersion,
+      nome: user.nome,
+      papel: user.papel,
+      versaoToken: user.versaoToken,
     };
     return this.jwtService.sign(payload);
   }
 
-  private buildPublicUser(user: User): PublicUser {
-    const { passwordHash, ...publicUser } = user;
-    void passwordHash;
+  private buildPublicUser(user: Usuario): PublicUser {
+    const { senhaHash, ...publicUser } = user;
+    void senhaHash;
     return publicUser;
   }
 
-  private buildAuthResult(user: User): AuthResult {
+  private buildAuthResult(user: Usuario): AuthResult {
     return {
-      [AUTH_COOKIE_NAME]: this.signToken(user),
+      token: this.signToken(user),
       user: this.buildPublicUser(user),
     };
   }
 
-  async validateUser(email: string, password: string): Promise<User | null> {
-    const normalizedEmail = this.normalizeEmail(email);
-    const user = await this.usersService.findByEmail(normalizedEmail, {
-      withPassword: true,
-    });
+  private async findUserWithPassword(login: string): Promise<Usuario | null> {
+    const fn = this.usuariosService.findByLogin.bind(this.usuariosService) as (
+      login: string,
+      opts?: { withPassword?: boolean },
+    ) => Promise<Usuario | null>;
+    return fn(login, { withPassword: true });
+  }
 
-    if (user && (await bcrypt.compare(password, user.passwordHash))) {
+  async validateUser(login: string, password: string): Promise<Usuario | null> {
+    const normalizedLogin = this.normalizeLogin(login);
+    const user = await this.findUserWithPassword(normalizedLogin);
+
+    if (user && (await bcrypt.compare(password, user.senhaHash))) {
       return user;
     }
     return null;
   }
 
   async login(dto: LoginRequestDto) {
-    const normalizedEmail = this.normalizeEmail(dto.email);
-    const validated = await this.validateUser(normalizedEmail, dto.password);
-    if (!validated) throw new UnauthorizedException('Usuário ou senha inválidos');
+    const normalizedLogin = this.normalizeLogin(dto.login);
+    const validated = await this.validateUser(normalizedLogin, dto.senha);
+    if (!validated)
+      throw new UnauthorizedException('Usuário ou senha inválidos');
     return this.buildAuthResult(validated);
   }
 
-  loginFromGuard(user: User) {
+  loginFromGuard(user: Usuario) {
     return this.buildAuthResult(user);
   }
 
-  async register(dto: CreateUserDto) {
-    const passwordHash = await bcrypt.hash(dto.password, 10);
-    const user = await this.usersService.create({
+  async register(dto: CriarUsuarioDto) {
+    // validações de sufixo de email conforme perfil
+    const emailNorm = this.normalizeEmail(dto.email);
+    if (
+      (dto.perfil === 'docente' || dto.perfil === 'servidor') &&
+      !emailNorm.endsWith('@ufc.br')
+    ) {
+      throw new BadRequestException(
+        'E-mail institucional inválido (deve terminar em @ufc.br)',
+      );
+    }
+    if (dto.perfil === 'bolsista' && !emailNorm.endsWith('@alu.ufc.br')) {
+      throw new BadRequestException(
+        'E-mail de aluno inválido (deve terminar em @alu.ufc.br)',
+      );
+    }
+
+    const senhaHash = await bcrypt.hash(dto.senha, 10);
+    // cria como VISITANTE (pode logar imediatamente)
+    const user = await this.usuariosService.create({
+      login: dto.login,
       email: dto.email,
-      name: dto.name,
-      passwordHash,
+      nome: dto.nome,
+      senhaHash,
     });
+
+    // cria solicitação se for bolsista/docente/servidor
+    if (dto.perfil === 'bolsista') {
+      await this.solicitacoesService.createOrReopenSolicitacao(user.id, {
+        tipo: 'BOLSISTA',
+      } as any);
+    } else if (dto.perfil === 'docente') {
+      await this.solicitacoesService.createOrReopenSolicitacao(user.id, {
+        tipo: 'PROFESSOR',
+      } as any);
+    } else if (dto.perfil === 'servidor') {
+      await this.solicitacoesService.createOrReopenSolicitacao(user.id, {
+        tipo: 'TECNICO',
+      } as any);
+    }
 
     return this.buildAuthResult(user);
   }

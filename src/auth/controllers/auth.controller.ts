@@ -1,35 +1,30 @@
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
-import {
-  ApiTags,
   ApiOperation,
   ApiBearerAuth,
-  ApiCookieAuth,
+  ApiBody,
+  ApiResponse,
 } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { AuthService } from '@/auth/services/auth.service';
 import { LocalAuthGuard } from '@/auth/guards/local-auth.guard';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
-import { AUTH_COOKIE_NAME } from '@/auth/auth.constants';
-import { CreateUserDto } from '@/auth/dtos/create-user.dto';
+import { PasswordResetService } from '@/auth/password-reset.service';
+import { CriarUsuarioDto } from '@/auth/dtos/criar-usuario.dto';
+import { UsuariosService } from '@/users/users.service';
+import { AuthResponseDto } from '@/auth/dtos/auth-response.dto';
 import { LoginRequestDto } from '@/auth/dtos/login-request.dto';
 import { AuthenticatedRequest } from '@/auth/types';
-
-type CookieCapableResponse = Response & {
-  cookie?: (name: string, val: string, options?: any) => void;
-  clearCookie?: (name: string, options?: any) => void;
-};
+import { ForgotPasswordDto } from '@/auth/dtos/forgot-password.dto';
+import { ResetPasswordDto } from '@/auth/dtos/reset-password.dto';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private passwordResetService: PasswordResetService,
+    private usuariosService: UsuariosService,
+  ) {}
 
   private getOriginFromReq(req?: Request): string | undefined {
     if (!req) return undefined;
@@ -39,117 +34,120 @@ export class AuthController {
     return (h.origin as string) || (h['origin'] as string) || undefined;
   }
 
-  private setCookie(res: Response, token: string, origin?: string) {
-    const isCrossSite =
-      typeof origin === 'string' && !origin.includes('localhost');
-    const cookieOptions = {
-      httpOnly: true,
-      secure: isCrossSite,
-      sameSite: isCrossSite ? ('none' as const) : ('lax' as const),
-      expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    };
-
-    const cookieRes = res as CookieCapableResponse;
-    if (cookieRes && typeof cookieRes.cookie === 'function') {
-      cookieRes.cookie(AUTH_COOKIE_NAME, token, cookieOptions);
-    }
-  }
-
   @UseGuards(LocalAuthGuard)
   @Post('login')
-  @ApiOperation({ summary: 'Public: Login (retorna cookie de autenticação)' })
-  login(
-    @Body() _body: LoginRequestDto,
-    @Req() req: AuthenticatedRequest,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  @ApiOperation({
+    summary: 'Public: Login (retorna token JWT e dados do usuário)',
+  })
+  @ApiBody({ type: LoginRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Login realizado com sucesso (retorna token JWT e user)',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Usuário ou senha inválidos' })
+  login(@Body() _body: LoginRequestDto, @Req() req: AuthenticatedRequest) {
     const authResult = this.authService.loginFromGuard(req.user);
-    const token = authResult[AUTH_COOKIE_NAME] as string;
-    const origin = this.getOriginFromReq(req);
-    this.setCookie(res, token, origin);
-    return { message: 'Login realizado com sucesso', ...authResult };
+    const { token, user } = authResult;
+    return { message: 'Login realizado com sucesso', token, user };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('logout')
-  @ApiOperation({ summary: 'Public: Logout (limpa cookie de autenticação)' })
-  logout(
-    @Req() reqOrRes: Request | Response,
-    @Res({ passthrough: true }) res?: Response,
-  ) {
-    const actualRes: Response | undefined =
-      res ?? (reqOrRes as unknown as Response);
-    const actualReq: Request | undefined = res
-      ? (reqOrRes as Request)
-      : undefined;
-
-    const origin = this.getOriginFromReq(actualReq);
-    const isCrossSite =
-      typeof origin === 'string' && !origin.includes('localhost');
-    const clearableRes = actualRes as CookieCapableResponse;
-    if (clearableRes && typeof clearableRes.clearCookie === 'function') {
-      if (!actualReq) {
-        clearableRes.clearCookie(AUTH_COOKIE_NAME);
-      } else {
-        clearableRes.clearCookie(AUTH_COOKIE_NAME, {
-          httpOnly: true,
-          secure: isCrossSite,
-          sameSite: isCrossSite ? ('none' as const) : ('lax' as const),
-        });
-      }
-    }
+  @ApiOperation({ summary: 'Autenticado: Logout (invalida o token atual)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Logout realizado com sucesso',
+    schema: { example: { message: 'Logout realizado com sucesso' } },
+  })
+  async logout(@Req() req: AuthenticatedRequest) {
+    // invalidate token by rotating versaoToken
+    await this.usuariosService.rotateTokenVersion(req.user.id);
     return { message: 'Logout realizado com sucesso' };
   }
 
   @Post('register')
   @ApiOperation({
-    summary: 'Public: Registrar novo usuário (retorna cookie de autenticação)',
+    summary:
+      'Public: Registrar novo usuário (retorna token JWT e dados do usuário)',
   })
-  async register(
-    @Body() body: CreateUserDto,
-    @Req() reqOrRes: Request | Response,
-    @Res({ passthrough: true }) res?: Response,
-  ) {
-    const actualRes: Response | undefined =
-      res ?? (reqOrRes as unknown as Response);
-    const actualReq: Request | undefined = res
-      ? (reqOrRes as Request)
-      : undefined;
-
+  @ApiBody({ type: CriarUsuarioDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Usuário registrado com sucesso (retorna token JWT e user)',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Dados inválidos (email/login em uso ou sufixo de email inválido para o perfil)',
+  })
+  async register(@Body() body: CriarUsuarioDto) {
     const authResult = await this.authService.register(body);
-    const token = authResult[AUTH_COOKIE_NAME] as string;
-    const origin = this.getOriginFromReq(actualReq);
+    const { token, user } = authResult;
+    return { message: 'Usuário registrado com sucesso', token, user };
+  }
 
-    if (actualRes) {
-      const cookieRes = actualRes as CookieCapableResponse;
-      if (typeof cookieRes.cookie === 'function') {
-        cookieRes.cookie(AUTH_COOKIE_NAME, token, {
-          httpOnly: true,
-          secure: typeof origin === 'string' && !origin.includes('localhost'),
-          sameSite:
-            typeof origin === 'string' && !origin.includes('localhost')
-              ? ('none' as const)
-              : ('lax' as const),
-          expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        });
-      }
-    }
+  @Post('forgot-password')
+  @ApiOperation({
+    summary: 'Public: Solicitar redefinição de senha (envia e-mail)',
+  })
+  @ApiBody({ type: ForgotPasswordDto })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Solicitação aceita (resposta genérica para evitar enumeração de usuários)',
+    schema: { example: { ok: true } },
+  })
+  @ApiResponse({ status: 400, description: 'Email inválido' })
+  async forgotPassword(@Body() body: ForgotPasswordDto) {
+    await this.passwordResetService.requestReset(body.email);
+    return { ok: true };
+  }
 
-    return { message: 'Usuário registrado com sucesso', ...authResult };
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Public: Redefinir senha usando token' })
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Senha redefinida com sucesso',
+    schema: { example: { ok: true } },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Token inválido, expirado ou já utilizado',
+  })
+  async resetPassword(@Body() body: ResetPasswordDto) {
+    await this.passwordResetService.resetPassword(body.token, body.senha);
+    return { ok: true };
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('profile')
   @ApiBearerAuth()
-  @ApiCookieAuth()
   @ApiOperation({ summary: 'Autenticado: Obter perfil do usuário' })
+  @ApiResponse({
+    status: 200,
+    description: 'Perfil do usuário',
+    schema: {
+      example: {
+        id: 1,
+        login: 'usuario',
+        email: 'x@x',
+        nome: 'Nome',
+        papel: 'ESTUDANTE',
+      },
+    },
+  })
   getProfile(@Req() req: AuthenticatedRequest) {
     return {
       id: req.user.id,
+      login: req.user.login,
       email: req.user.email,
-      name: req.user.name,
-      role: req.user.role,
-      createdAt: req.user.createdAt,
-      updatedAt: req.user.updatedAt,
+      nome: req.user.nome,
+      papel: req.user.papel,
+      criadoEm: req.user.criadoEm,
+      atualizadoEm: req.user.atualizadoEm,
     };
   }
 }

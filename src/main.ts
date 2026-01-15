@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import cookieParser from 'cookie-parser';
+import { SwaggerDocumentService } from './swagger/swagger-document.service';
 import { Logger, ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
@@ -17,8 +17,7 @@ async function bootstrap() {
 
   const allowedOrigins = [
     process.env.FRONTEND_URL,
-    process.env.FRONTEND_URL_DEV,
-    process.env.FRONTEND_URL_PROD,
+    process.env.PUBLIC_API_URL,
     'http://localhost:3000',
   ].filter(Boolean);
 
@@ -35,8 +34,6 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
   });
 
-  app.use(cookieParser());
-
   const port = process.env.PORT || 8080;
 
   const config = new DocumentBuilder()
@@ -44,13 +41,21 @@ async function bootstrap() {
     .setDescription('API do jornal de notícias (admin + público)')
     .setVersion('1.0')
     .addBearerAuth()
-    .addCookieAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
 
+  // store the generated OpenAPI document so it can be served via /openapi.json
+  try {
+    const swaggerDocService = app.get(SwaggerDocumentService);
+    swaggerDocService.setDocument(document);
+  } catch (err) {
+    // if the service is not available for some reason, ignore
+  }
+
   await app.listen(port);
-  Logger.log(`Application is running on: http://localhost:${port}`);
-  Logger.log(`Swagger is running on: http://localhost:${port}/docs`);
+  const url = process.env.PUBLIC_API_URL || `http://localhost:${port}`;
+  Logger.log(`Application is running on: ${url}`);
+  Logger.log(`Swagger is running on: ${url}/docs`);
 }
 void bootstrap();

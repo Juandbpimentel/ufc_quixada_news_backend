@@ -6,11 +6,11 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
-import { Role } from '@prisma/client';
+import { Papel } from '@prisma/client';
 import { ROLES_KEY } from '@/auth/decorators/roles.decorator';
 
 type RequestWithUser = Request & {
-  user?: { role?: Role };
+  user?: { papel?: Papel };
 };
 
 @Injectable()
@@ -18,7 +18,7 @@ export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [
+    const requiredRoles = this.reflector.getAllAndOverride<Papel[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
@@ -28,8 +28,8 @@ export class RolesGuard implements CanActivate {
     }
 
     const req = context.switchToHttp().getRequest<RequestWithUser>();
-    const role = req.user?.role;
-    if (!role || !requiredRoles.includes(role)) {
+    const papel = req.user?.papel;
+    if (!papel || !requiredRoles.includes(papel)) {
       throw new ForbiddenException('Sem permissão');
     }
     return true;
