@@ -43,10 +43,12 @@ describe('PasswordResetService', () => {
     expect(res).toEqual({ ok: true });
     expect(mockMeuContato.sendContact).toHaveBeenCalledTimes(1);
     const payload = mockMeuContato.sendContact.mock.calls[0][0];
-    expect(payload.to).toBe('test@example.com');
-    expect(payload.html).toBeDefined();
-    expect(payload.html).toContain(capturedToken);
-    expect(payload.html).toContain('Test User');
+    // now the recipient is in `email` and the HTML body is `message_html`
+    expect(payload.email).toBe('test@example.com');
+    expect(payload.from_email).toBeDefined();
+    expect(payload.message_html).toBeDefined();
+    expect(payload.message_html).toContain(capturedToken);
+    expect(payload.message_html).toContain('Test User');
   });
 
   test('resetPassword should validate token and update password and token usage', async () => {

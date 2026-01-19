@@ -59,21 +59,30 @@ export class PasswordResetService {
       <p style="font-size:12px;color:#666;">Atenciosamente,<br/>${process.env.MAIL_FROM_NAME || 'UFC Quixadá News'}</p>
     `;
 
-    // build payload for Meu Contato API — include both text and HTML (if supported)
-    const payload = {
+    // build payload for Meu Contato API — send the reset email TO the user
+    const payload: Record<string, any> = {
+      // 'name' is the sender name shown to the recipient
       name: process.env.MAIL_FROM_NAME || 'UFC Quixadá News',
-      email: process.env.MAIL_FROM_EMAIL || 'no-reply@ufc-quixada.edu.br',
+      // send the message to the user who requested the reset
+      email: user.email,
+      // explicit from address (avoid relying on 'email' as sender)
+      from_email: process.env.MAIL_FROM_EMAIL || 'juandbpimentel@gmail.com',
       subject,
       message,
-      html: messageHtml,
-      to: user.email,
-    } as Record<string, any>;
+      // backend expects `message_html` (not `html`)
+      message_html: messageHtml,
+    };
+
+    // optionally notify an admin address if configured
+    if (process.env.MAIL_ADMIN_EMAIL)
+      payload.admin_email = process.env.MAIL_ADMIN_EMAIL;
 
     const sendResult = await this.meuContato.sendContact(payload);
-    if (!sendResult.ok)
+    if (!sendResult.ok) {
       this.logger.warn(
         'Failed to send reset email: ' + JSON.stringify(sendResult),
       );
+    }
 
     return { ok: true };
   }
@@ -103,7 +112,7 @@ export class PasswordResetService {
     });
 
     // rotate token version so existing sessions become invalid
-    const newVers = await this.prisma.usuario.update({
+    await this.prisma.usuario.update({
       where: { id: user.id },
       data: { versaoToken: { set: this.generateToken() } },
       select: { versaoToken: true },
