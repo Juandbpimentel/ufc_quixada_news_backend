@@ -15,20 +15,37 @@ async function bootstrap() {
     }),
   );
 
-  const allowedOrigins = [
-    process.env.FRONTEND_URL,
-    process.env.PUBLIC_API_URL,
-    'http://localhost:3000',
-  ].filter(Boolean);
+  // Allowed origins configuration (supports comma-separated list or "*")
+  const rawAllowed =
+    process.env.ALLOWED_CLIENTS_ORIGIN ||
+    process.env.allowed_clients_origin ||
+    process.env.FRONTEND_URL ||
+    process.env.PUBLIC_API_URL ||
+    '*';
+
+  let allowedOrigins: string[] = [];
+  if (String(rawAllowed).trim() === '*') {
+    allowedOrigins = ['*'];
+  } else {
+    allowedOrigins = String(rawAllowed)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  Logger.log('Allowed origins: ' + JSON.stringify(allowedOrigins));
 
   app.enableCors({
     origin: (
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
+      // allow server-to-server requests or tools like curl (no origin)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error('Origin not allowed by CORS'));
+      if (allowedOrigins.includes('*')) return callback(null, true);
+      return allowedOrigins.includes(origin)
+        ? callback(null, true)
+        : callback(new Error('Origin not allowed by CORS'));
     },
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
