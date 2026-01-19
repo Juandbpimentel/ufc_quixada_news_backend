@@ -15,24 +15,32 @@ async function bootstrap() {
     }),
   );
 
-  // Allowed origins configuration (supports comma-separated list or "*")
-  const rawAllowed =
-    process.env.ALLOWED_CLIENTS_ORIGIN ||
-    process.env.allowed_clients_origin ||
-    process.env.FRONTEND_URL ||
-    process.env.PUBLIC_API_URL ||
-    '*';
+  // Aggregate allowed origins from multiple env vars into a canonical set.
+  // Sources (comma-separated supported): ALLOWED_CLIENTS_ORIGIN, allowed_clients_origin, FRONTEND_URL, PUBLIC_API_URL
+  const sources = [
+    process.env.ALLOWED_CLIENTS_ORIGIN,
+    process.env.allowed_clients_origin,
+    process.env.FRONTEND_URL,
+    process.env.PUBLIC_API_URL,
+  ].filter(Boolean) as string[];
 
-  let allowedOrigins: string[] = [];
-  if (String(rawAllowed).trim() === '*') {
-    allowedOrigins = ['*'];
-  } else {
-    allowedOrigins = String(rawAllowed)
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
+  // join all sources, split by comma, normalize and dedupe
+  const combined = sources.join(',');
+  const rawCandidates = String(combined)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
+  // normalize special cases: accept '/' as alias for '*'
+  const normalized = rawCandidates.map((v) => (v === '/' ? '*' : v));
+
+  // build set and remove invalid origins (paths like "/" are normalized above)
+  const originSet = new Set<string>(normalized);
+
+  // if nothing provided, default to '*'
+  if (originSet.size === 0) originSet.add('*');
+
+  const allowedOrigins = Array.from(originSet);
   Logger.log('Allowed origins: ' + JSON.stringify(allowedOrigins));
 
   app.enableCors({
