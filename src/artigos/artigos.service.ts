@@ -298,19 +298,42 @@ export class ArtigosService {
     const slug = existing ? `${baseSlug}-${Date.now()}` : baseSlug;
 
     const shouldPublish = data.publicado === true;
+    // If capaUrl is a data URL, defer setting it until after we have an article ID
+    const isCapaDataUrl =
+      typeof data.capaUrl === 'string' && data.capaUrl.startsWith('data:');
+    const initialCreatePayload: any = {
+      titulo: data.titulo,
+      slug,
+      resumo: data.resumo,
+      // do not persist data URLs directly into the DB
+      capaUrl: isCapaDataUrl ? null : data.capaUrl,
+      categoria: data.categoria,
+      publicado: shouldPublish,
+      publicadoEm: shouldPublish ? new Date() : null,
+      autorId: authorId,
+    };
+
     const article = await this.prisma.artigo.create({
-      data: {
-        titulo: data.titulo,
-        slug,
-        resumo: data.resumo,
-        capaUrl: data.capaUrl,
-        categoria: data.categoria,
-        publicado: shouldPublish,
-        publicadoEm: shouldPublish ? new Date() : null,
-        autorId: authorId,
-      },
+      data: initialCreatePayload,
       include: { sessoes: true },
     });
+
+    // If the client provided a data URL for the cover, upload it now and update the record
+    if (isCapaDataUrl) {
+      if (!this.storage.isConfigured()) {
+        // keep behavior consistent with session-image handling
+        throw new Error('Envie URL pública ou configure o Firebase Storage');
+      }
+      const ext =
+        (data.capaUrl!.match(/^data:(.+);base64,/) || [])[1] || 'image/jpeg';
+      const extClean = ext.split('/')[1] || 'jpg';
+      const dest = `artigos/${article.id}/capa-${Date.now()}.${extClean}`;
+      const uploaded = await this.storage.uploadBase64(data.capaUrl!, dest);
+      await this.prisma.artigo.update({
+        where: { id: article.id },
+        data: { capaUrl: uploaded },
+      });
+    }
 
     // create sessions if provided
     if (Array.isArray(data.artigoSessoes) && data.artigoSessoes.length > 0) {
@@ -371,13 +394,26 @@ export class ArtigosService {
       nextSlug = exists ? `${s}-${Date.now()}` : s;
     }
 
+    // If capaUrl is a data URL, upload first and replace it so we never write base64 to the DB
+    let capaUrlToPersist = data.capaUrl;
+    if (typeof data.capaUrl === 'string' && data.capaUrl.startsWith('data:')) {
+      if (!this.storage.isConfigured()) {
+        throw new Error('Envie URL pública ou configure o Firebase Storage');
+      }
+      const ext =
+        (data.capaUrl.match(/^data:(.+);base64,/) || [])[1] || 'image/jpeg';
+      const extClean = ext.split('/')[1] || 'jpg';
+      const dest = `artigos/${id}/capa-${Date.now()}.${extClean}`;
+      capaUrlToPersist = await this.storage.uploadBase64(data.capaUrl, dest);
+    }
+
     const updated = await this.prisma.artigo.update({
       where: { id },
       data: {
         titulo: data.titulo,
         resumo: data.resumo,
         slug: nextSlug ?? undefined,
-        capaUrl: data.capaUrl,
+        capaUrl: capaUrlToPersist,
         publicado: nextPublished,
         categoria: data.categoria,
         publicadoEm:
