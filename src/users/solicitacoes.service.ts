@@ -10,6 +10,7 @@ export class SolicitacoesService {
   async createOrReopenSolicitacao(usuarioId: number, dto: CriarSolicitacaoDto) {
     const existing = await this.prisma.solicitacao.findUnique({
       where: { usuarioId },
+      include: { usuario: { select: { id: true, nome: true } } },
     });
 
     if (existing) {
@@ -28,6 +29,7 @@ export class SolicitacoesService {
           status: StatusSolicitacao.PENDENTE,
           atualizadoEm: new Date(),
         },
+        include: { usuario: { select: { id: true, nome: true } } },
       });
     }
 
@@ -37,21 +39,31 @@ export class SolicitacoesService {
         tipo: dto.tipo,
         mensagem: dto.mensagem,
       },
+      include: { usuario: { select: { id: true, nome: true } } },
     });
   }
 
   async listOwn(usuarioId: number) {
-    return this.prisma.solicitacao.findUnique({ where: { usuarioId } });
+    // always return an array to keep the API contract consistent
+    const solic = await this.prisma.solicitacao.findUnique({
+      where: { usuarioId },
+      include: { usuario: { select: { id: true, nome: true } } },
+    });
+    return solic ? [solic] : [];
   }
 
   async getById(id: number) {
-    return this.prisma.solicitacao.findUnique({ where: { id } });
+    return this.prisma.solicitacao.findUnique({
+      where: { id },
+      include: { usuario: { select: { id: true, nome: true } } },
+    });
   }
 
   async listPendingFor() {
     // visibility rules should be enforced in controller/service that calls this
     return this.prisma.solicitacao.findMany({
       where: { status: StatusSolicitacao.PENDENTE },
+      include: { usuario: { select: { id: true, nome: true } } },
     });
   }
 

@@ -37,17 +37,37 @@ describe('SolicitacoesController', () => {
     expect(res).toHaveProperty('id', 1);
   });
 
-  it('list returns pending for approver roles', async () => {
-    mockSvc.listPendingFor.mockResolvedValueOnce([{ id: 5 }]);
-    const admin = { isAdmin: true } as any;
-    const res = await controller.list({ id: 9, isAdmin: true } as any);
-    expect(res).toEqual([{ id: 5 }]);
+  it('list returns own for regular user (always an array)', async () => {
+    mockSvc.listOwn.mockResolvedValueOnce([
+      { id: 6, usuario: { id: 6, nome: 'Z' } },
+    ]);
+    const res = await controller.list({ id: 6, isAdmin: false } as any);
+    expect(Array.isArray(res)).toBe(true);
+    expect(res).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 6 })]),
+    );
   });
 
-  it('list returns own for regular user', async () => {
-    mockSvc.listOwn.mockResolvedValueOnce({ id: 6 });
-    const res = await controller.list({ id: 6, isAdmin: false } as any);
-    expect(res).toEqual({ id: 6 });
+  it('listPending returns pending for approver roles', async () => {
+    mockSvc.listPendingFor.mockResolvedValueOnce([
+      { id: 5, usuario: { id: 5, nome: 'A' } },
+    ]);
+    const res = await controller.listPending({ id: 9, isAdmin: true } as any);
+    expect(res).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 5 })]),
+    );
+
+    // real request shapes may not include `isAdmin` boolean — allow papel-based admin
+    mockSvc.listPendingFor.mockResolvedValueOnce([
+      { id: 6, usuario: { id: 6, nome: 'B' } },
+    ]);
+    const res2 = await controller.listPending({
+      id: 10,
+      papel: 'ADMINISTRADOR',
+    } as any);
+    expect(res2).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 6 })]),
+    );
   });
 
   describe('aceitar', () => {
@@ -77,6 +97,22 @@ describe('SolicitacoesController', () => {
         3,
         StatusSolicitacao.ACEITA,
         1,
+      );
+
+      // approve using papel-based admin (no isAdmin flag)
+      mockSvc.getById.mockResolvedValueOnce({ id: 4, tipo: 'PROFESSOR' });
+      mockSvc.setStatus.mockResolvedValueOnce({
+        id: 4,
+        status: StatusSolicitacao.ACEITA,
+      });
+      const res2 = await controller.aceitar(
+        { papel: 'ADMINISTRADOR', id: 2 } as any,
+        4,
+      );
+      expect(mockSvc.setStatus).toHaveBeenCalledWith(
+        4,
+        StatusSolicitacao.ACEITA,
+        2,
       );
     });
   });

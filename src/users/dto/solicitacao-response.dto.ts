@@ -7,6 +7,13 @@ export class SolicitacaoResponseDto {
   @ApiProperty({ example: 10, description: 'ID do usuário que solicitou' })
   usuarioId!: number;
 
+  @ApiProperty({
+    example: 'Fulano de Tal',
+    description: 'Nome do usuário que solicitou',
+    required: false,
+  })
+  usuarioNome?: string;
+
   @ApiProperty({ example: 'BOLSISTA', description: 'Tipo da solicitação' })
   tipo!: string;
 
