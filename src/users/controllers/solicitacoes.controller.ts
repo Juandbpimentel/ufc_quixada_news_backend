@@ -34,6 +34,16 @@ import { SolicitacaoResponseDto } from '../dto/solicitacao-response.dto';
 export class SolicitacoesController {
   constructor(private svc: SolicitacoesService) {}
 
+  // map internal DB enums to client-friendly status values
+  private mapStatusToClient(status: string | undefined) {
+    if (!status) return status;
+    const s = String(status).toUpperCase();
+    if (s === 'ACEITA') return 'APROVADA';
+    if (s === 'REJEITADA') return 'REJEITADA';
+    if (s === 'PENDENTE') return 'PENDENTE';
+    return status;
+  }
+
   @Post()
   @ApiOperation({ summary: 'Autenticado: Criar ou reabrir solicitação' })
   @ApiBody({ type: CriarSolicitacaoDto })
@@ -48,39 +58,59 @@ export class SolicitacoesController {
   })
   async create(@CurrentUser() user: Usuario, @Body() dto: CriarSolicitacaoDto) {
     // only allow user to request for themselves
-    return this.svc.createOrReopenSolicitacao(user.id, dto);
+    const s = await this.svc.createOrReopenSolicitacao(user.id, dto);
+    return {
+      ...s,
+      status: this.mapStatusToClient(s.status),
+      usuarioNome: (s as any).usuario?.nome ?? undefined,
+    };
   }
 
   @Get()
   @ApiOperation({
-    summary:
-      'Autenticado: Listar próprias solicitações ou as pendentes para aprovar (se aprovar) ',
+    summary: 'Autenticado: Listar próprias solicitações (sempre retorna array)',
   })
   @ApiResponse({
     status: 200,
-    description:
-      'Retorna lista de solicitações (próprias ou pendentes para aprovador)',
-    schema: {
-      oneOf: [
-        { $ref: getSchemaPath(SolicitacaoResponseDto) },
-        {
-          type: 'array',
-          items: { $ref: getSchemaPath(SolicitacaoResponseDto) },
-        },
-      ],
-    },
+    description: 'Retorna lista de solicitações do próprio usuário (array)',
+    type: [SolicitacaoResponseDto],
   })
   async list(@CurrentUser() user: Usuario) {
-    // if admin or professor/tecnico return pendings
+    // return only the caller's solicitacoes (array). Approvers should use the
+    // dedicated /solicitacoes/pending endpoint to list pendings.
+    const own = await this.svc.listOwn(user.id);
+    return own.map((r) => ({
+      ...r,
+      status: this.mapStatusToClient(r.status),
+      usuarioNome: r.usuario?.nome ?? undefined,
+    }));
+  }
+
+  @Get('pending')
+  @ApiOperation({ summary: 'Aprovadores: listar solicitações pendentes' })
+  @ApiResponse({
+    status: 200,
+    description: 'Retorna lista de solicitações pendentes (array)',
+    type: [SolicitacaoResponseDto],
+  })
+  async listPending(@CurrentUser() user: Usuario) {
     if (
-      user.isAdmin ||
-      user.papel === 'PROFESSOR' ||
-      user.papel === 'TECNICO_ADMINISTRATIVO'
+      !(
+        user.papel === 'ADMINISTRADOR' ||
+        user.isAdmin ||
+        user.papel === 'PROFESSOR' ||
+        user.papel === 'TECNICO_ADMINISTRATIVO'
+      )
     ) {
-      return this.svc.listPendingFor();
+      // non-approvers should not access this route
+      throw new ForbiddenException('Acesso negado');
     }
-    // otherwise return own
-    return this.svc.listOwn(user.id);
+    const items = await this.svc.listPendingFor();
+    return items.map((r) => ({
+      ...r,
+      status: this.mapStatusToClient(r.status),
+      usuarioNome: (r as any).usuario?.nome ?? undefined,
+    }));
   }
 
   @Patch(':id/aceitar')
@@ -108,6 +138,7 @@ export class SolicitacoesController {
     if (solic.tipo === 'BOLSISTA') {
       if (
         !(
+          user.papel === 'ADMINISTRADOR' ||
           user.isAdmin ||
           user.papel === 'PROFESSOR' ||
           user.papel === 'TECNICO_ADMINISTRATIVO'
@@ -116,7 +147,7 @@ export class SolicitacoesController {
         throw new ForbiddenException('Acesso negado');
       }
     } else {
-      if (!user.isAdmin)
+      if (!(user.papel === 'ADMINISTRADOR' || user.isAdmin))
         throw new ForbiddenException('Apenas administradores podem aprovar');
     }
 
@@ -144,6 +175,7 @@ export class SolicitacoesController {
     if (solic.tipo === 'BOLSISTA') {
       if (
         !(
+          user.papel === 'ADMINISTRADOR' ||
           user.isAdmin ||
           user.papel === 'PROFESSOR' ||
           user.papel === 'TECNICO_ADMINISTRATIVO'
@@ -152,7 +184,7 @@ export class SolicitacoesController {
         throw new ForbiddenException('Acesso negado');
       }
     } else {
-      if (!user.isAdmin)
+      if (!(user.papel === 'ADMINISTRADOR' || user.isAdmin))
         throw new ForbiddenException('Apenas administradores podem rejeitar');
     }
 

@@ -12,11 +12,13 @@ import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { PasswordResetService } from '@/auth/password-reset.service';
 import { CriarUsuarioDto } from '@/auth/dtos/criar-usuario.dto';
 import { UsuariosService } from '@/users/users.service';
+import { SolicitacoesService } from '@/users/solicitacoes.service';
 import { AuthResponseDto } from '@/auth/dtos/auth-response.dto';
 import { LoginRequestDto } from '@/auth/dtos/login-request.dto';
 import { AuthenticatedRequest } from '@/auth/types';
 import { ForgotPasswordDto } from '@/auth/dtos/forgot-password.dto';
 import { ResetPasswordDto } from '@/auth/dtos/reset-password.dto';
+import { StatusSolicitacao } from '@prisma/client';
 
 @Controller('auth')
 export class AuthController {
@@ -24,6 +26,7 @@ export class AuthController {
     private authService: AuthService,
     private passwordResetService: PasswordResetService,
     private usuariosService: UsuariosService,
+    private solicitacoesService: SolicitacoesService,
   ) {}
 
   private getOriginFromReq(req?: Request): string | undefined {
@@ -139,15 +142,45 @@ export class AuthController {
       },
     },
   })
-  getProfile(@Req() req: AuthenticatedRequest) {
+  async getProfile(@Req() req: AuthenticatedRequest) {
+    // Prefer the authoritative user record from the DB so admin changes
+    // (or other out-of-band updates) take effect immediately even if the
+    // client's JWT still contains a stale `papel`.
+    const publishingRoles = [
+      'DOCENTE',
+      'PROFESSOR',
+      'SERVIDOR',
+      'TECNICO_ADMINISTRATIVO',
+      'BOLSISTA',
+      'ADMINISTRADOR',
+    ];
+
+    const freshUser = await this.usuariosService.findOne(req.user.id);
+    const effectivePapel =
+      (freshUser && (freshUser as any).papel) || req.user.papel;
+
+    let isApproved = publishingRoles.includes(effectivePapel);
+
+    if (!isApproved) {
+      const my = await this.solicitacoesService.listOwn(req.user.id);
+      if (
+        Array.isArray(my) &&
+        my.some((s) => s.status === StatusSolicitacao.ACEITA)
+      ) {
+        isApproved = true;
+      }
+    }
+
     return {
       id: req.user.id,
-      login: req.user.login,
-      email: req.user.email,
-      nome: req.user.nome,
-      papel: req.user.papel,
-      criadoEm: req.user.criadoEm,
-      atualizadoEm: req.user.atualizadoEm,
+      login: (freshUser && (freshUser as any).login) || req.user.login,
+      email: (freshUser && (freshUser as any).email) || req.user.email,
+      nome: (freshUser && (freshUser as any).nome) || req.user.nome,
+      papel: effectivePapel,
+      isApproved,
+      criadoEm: (freshUser && (freshUser as any).criadoEm) || req.user.criadoEm,
+      atualizadoEm:
+        (freshUser && (freshUser as any).atualizadoEm) || req.user.atualizadoEm,
     };
   }
 }

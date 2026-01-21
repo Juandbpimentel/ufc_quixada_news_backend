@@ -6,7 +6,7 @@ describe('SolicitacoesController', () => {
   let controller: SolicitacoesController;
   const mockSvc: any = {
     listPendingFor: jest.fn().mockResolvedValue([{ id: 1 }]),
-    listOwn: jest.fn().mockResolvedValue({ id: 2 }),
+    listOwn: jest.fn().mockResolvedValue([{ id: 2 }]),
     createOrReopenSolicitacao: jest.fn().mockResolvedValue({ id: 3 }),
     getById: jest.fn().mockResolvedValue({ id: 1, tipo: 'BOLSISTA' }),
     setStatus: jest.fn().mockResolvedValue({ id: 1, status: 'ACEITA' }),
