@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { SwaggerDocumentService } from './swagger/swagger-document.service';
 import { Logger, ValidationPipe } from '@nestjs/common';
+import * as express from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -14,6 +15,16 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Configure maximum JSON / URL-encoded body size (used for data-URL images).
+  // Default: 200 MB. Can be overridden with JSON_BODY_LIMIT_MB (number) or
+  // JSON_BODY_LIMIT (string like '500mb'). Example: JSON_BODY_LIMIT_MB=500
+  const jsonBodyLimit = process.env.JSON_BODY_LIMIT_MB
+    ? `${parseInt(process.env.JSON_BODY_LIMIT_MB, 10)}mb`
+    : process.env.JSON_BODY_LIMIT || '200mb';
+  app.use(express.json({ limit: jsonBodyLimit }));
+  app.use(express.urlencoded({ limit: jsonBodyLimit, extended: true }));
+  Logger.log(`JSON/body parser limit: ${jsonBodyLimit}`);
 
   // Aggregate allowed origins from multiple env vars into a canonical set.
   // Sources (comma-separated supported): ALLOWED_CLIENTS_ORIGIN, allowed_clients_origin, FRONTEND_URL, PUBLIC_API_URL

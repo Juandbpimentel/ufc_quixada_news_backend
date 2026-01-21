@@ -50,6 +50,17 @@ Nota sobre o seed (admin inicial) 🔐
   - `ADMIN_LOGIN="admin"`
   - `ADMIN_PASSWORD="adminpass"`
 
+## Upload / request-size limits 🔧
+
+Se o frontend envia imagens como data-URL dentro do JSON (por exemplo sessões de artigo), aumente o limite do parser JSON e do storage:
+
+- `JSON_BODY_LIMIT_MB` (number) — define o limite do parser JSON/urlencoded (ex.: 200 ou 500)
+- `UPLOAD_MAX_MB` (number) — tamanho máximo aceito pelo `FirebaseStorageService` (em MB)
+
+Padrões do projeto: `200` MB. Para aceitar 500 MB defina `JSON_BODY_LIMIT_MB=500` e `UPLOAD_MAX_MB=500`.
+
+⚠️ Nota sobre o ambiente de hospedagem (Render, Vercel, etc.): a plataforma pode impor limites próprios para o tamanho da requisição ou do tempo de execução — se você precisar aceitar uploads grandes em produção, prefira upload direto ao storage (S3/Cloud Storage/Cloudinary) ou upload em partes/resumable.
+
 5. Rode a API
 
 - `npm run start:dev`
@@ -62,4 +73,3 @@ Important: Content sessions migration
 
 - The `conteudo` field was removed. Existing article content will be migrated into `artigo_sessoes` as a single `PARAGRAFO` session by the new migration.
 - To apply locally: `npx prisma migrate dev --name remove-conteudo` (or `npx prisma migrate deploy` in production).
-

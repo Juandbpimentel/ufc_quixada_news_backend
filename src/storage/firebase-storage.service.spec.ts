@@ -64,4 +64,35 @@ describe('FirebaseStorageService', () => {
       url.includes('storage.googleapis.com') || url.includes('signed.example'),
     ).toBe(true);
   });
+
+  it('rejects base64 uploads larger than UPLOAD_MAX_MB', async () => {
+    // keep firebase envs valid
+    const sa = {
+      private_key:
+        '-----BEGIN PRIVATE KEY-----\nABC\n-----END PRIVATE KEY-----',
+      project_id: 'proj',
+      client_email: 'a@b.c',
+      storageBucket: 'test-bucket',
+    };
+    process.env.FIREBASE_PRIVATE_KEY_B64 = Buffer.from(
+      JSON.stringify(sa),
+    ).toString('base64');
+    process.env.FIREBASE_PROJECT_ID = sa.project_id;
+    process.env.FIREBASE_CLIENT_EMAIL = sa.client_email;
+    process.env.FIREBASE_STORAGE_BUCKET = sa.storageBucket;
+
+    // set a small limit (1 MB)
+    process.env.UPLOAD_MAX_MB = '1';
+
+    const svc = new FirebaseStorageService();
+    expect(svc.isConfigured()).toBe(true);
+
+    // create a ~2MB base64 payload
+    const bigBuffer = Buffer.alloc(2 * 1024 * 1024, 0);
+    const bigDataUrl = 'data:image/png;base64,' + bigBuffer.toString('base64');
+
+    await expect(svc.uploadBase64(bigDataUrl, 'too-big.png')).rejects.toThrow(
+      /Limite/i,
+    );
+  });
 });

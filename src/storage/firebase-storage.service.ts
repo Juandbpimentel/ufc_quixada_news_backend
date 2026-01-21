@@ -9,6 +9,11 @@ export class FirebaseStorageService {
   private bucket: Bucket | null = null;
   private configured: boolean = false;
 
+  // maximum allowed upload size in bytes (configurable via UPLOAD_MAX_MB)
+  // default: 200 MB
+  private readonly maxUploadBytes =
+    Number(process.env.UPLOAD_MAX_MB ?? 200) * 1024 * 1024;
+
   constructor() {
     try {
       // dynamic require so project doesn't need firebase-admin unless configured
@@ -164,6 +169,16 @@ export class FirebaseStorageService {
   ): Promise<string> {
     if (!this.isConfigured())
       throw new Error('Firebase Storage not configured');
+
+    // enforce configured maximum upload size (protect against huge base64 payloads)
+    if (buffer.length > this.maxUploadBytes) {
+      const actualMb = Math.round(buffer.length / 1024 / 1024);
+      const limitMb = Math.round(this.maxUploadBytes / 1024 / 1024);
+      throw new Error(
+        `Arquivo muito grande (${actualMb} MB). Limite: ${limitMb} MB. ` +
+          'Considere enviar uma URL pública ou usar upload direto ao storage.',
+      );
+    }
 
     const bucket = this.bucket;
     if (!bucket) throw new Error('Firebase Storage not configured');
