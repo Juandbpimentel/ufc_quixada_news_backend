@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
-import { Usuario, Prisma, Papel } from '@prisma/client';
+import { Usuario, Prisma, Papel, StatusSolicitacao } from '@prisma/client';
 import { randomUUID } from 'crypto';
 
 @Injectable()
@@ -84,6 +84,23 @@ export class UsuariosService {
           usuarioId: user.id,
         },
       });
+    }
+
+    // Admin-created users should not remain with a pending solicitation.
+    // If there's an existing solicitation for this usuario, mark it as ACEITA
+    // so the backend and any dashboards reflect an approved state.
+    try {
+      const existingSolic = await this.prisma.solicitacao.findUnique({
+        where: { usuarioId: user.id },
+      });
+      if (existingSolic && existingSolic.status !== StatusSolicitacao.ACEITA) {
+        await this.prisma.solicitacao.update({
+          where: { usuarioId: user.id },
+          data: { status: StatusSolicitacao.ACEITA, aprovadorId: null },
+        });
+      }
+    } catch (_) {
+      // noop: do not fail user creation if solicitation-related work fails
     }
 
     return user;
@@ -177,10 +194,78 @@ export class UsuariosService {
   }
 
   async updateRole(id: number, papel: Papel): Promise<Usuario> {
-    return await this.prisma.usuario.update({
+    const user = await this.prisma.usuario.update({
       where: { id },
       data: { papel },
     });
+
+    // ensure the domain-specific extension record exists when promoting role
+    try {
+      if (papel === Papel.BOLSISTA) {
+        const existing = await this.prisma.bolsista.findUnique({
+          where: { usuarioId: id },
+        });
+        if (!existing) {
+          await this.prisma.bolsista.create({ data: { usuarioId: id } });
+        }
+      }
+
+      if (papel === Papel.PROFESSOR) {
+        const existing = await this.prisma.professor.findUnique({
+          where: { usuarioId: id },
+        });
+        if (!existing) {
+          await this.prisma.professor.create({ data: { usuarioId: id } });
+        }
+      }
+
+      if (papel === Papel.TECNICO_ADMINISTRATIVO) {
+        const existing = await this.prisma.tecnicoAdministrativo.findUnique({
+          where: { usuarioId: id },
+        });
+        if (!existing) {
+          await this.prisma.tecnicoAdministrativo.create({
+            data: { usuarioId: id },
+          });
+        }
+      }
+    } catch (err) {
+      // Do not fail the role update if extension creation fails; keep system resilient.
+    }
+
+    // If there's a pending solicitation for this user, close it when an admin
+    // directly changes the papel. If the new papel matches the solicitation
+    // type, mark it as ACEITA; otherwise mark it as REJEITADA so the record is
+    // closed for auditing (do not silently delete).
+    try {
+      const existingSolic = await this.prisma.solicitacao.findUnique({
+        where: { usuarioId: id },
+      });
+      if (
+        existingSolic &&
+        existingSolic.status === StatusSolicitacao.PENDENTE
+      ) {
+        const tipoMatches =
+          (papel === Papel.BOLSISTA && existingSolic.tipo === 'BOLSISTA') ||
+          (papel === Papel.PROFESSOR && existingSolic.tipo === 'PROFESSOR') ||
+          (papel === Papel.TECNICO_ADMINISTRATIVO &&
+            existingSolic.tipo === 'TECNICO');
+
+        if (tipoMatches) {
+          await this.prisma.solicitacao.update({
+            where: { usuarioId: id },
+            data: { status: StatusSolicitacao.ACEITA, aprovadorId: null },
+          });
+        } else {
+          // admin performed the change: remove the obsolete pending solicitation
+          await this.prisma.solicitacao.delete({ where: { usuarioId: id } });
+        }
+      }
+    } catch (err) {
+      // noop: do not fail role update on solicitation-handling errors
+    }
+
+    return user;
   }
 
   async remove(id: number): Promise<Usuario> {

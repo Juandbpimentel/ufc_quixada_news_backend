@@ -3,6 +3,8 @@ import { AuthController } from '@/auth/controllers/auth.controller';
 import { AuthService } from '@/auth/services/auth.service';
 import { PasswordResetService } from '@/auth/password-reset.service';
 import { UsuariosService } from '@/users/users.service';
+import { SolicitacoesService } from '@/users/solicitacoes.service';
+import { StatusSolicitacao } from '@prisma/client';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -20,7 +22,11 @@ describe('AuthController', () => {
     requestReset: jest.fn(),
     resetPassword: jest.fn(),
   };
-  const mockUsuarios: any = { rotateTokenVersion: jest.fn() };
+  const mockUsuarios: any = {
+    rotateTokenVersion: jest.fn(),
+    findOne: jest.fn(),
+  };
+  const mockSolicitacoes: any = { listOwn: jest.fn() };
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -29,6 +35,7 @@ describe('AuthController', () => {
         { provide: AuthService, useValue: mockAuthService },
         { provide: PasswordResetService, useValue: mockPasswordReset },
         { provide: UsuariosService, useValue: mockUsuarios },
+        { provide: SolicitacoesService, useValue: mockSolicitacoes },
       ],
     }).compile();
 
@@ -67,5 +74,71 @@ describe('AuthController', () => {
     expect(mockPasswordReset.requestReset).toHaveBeenCalledWith(
       'noone@example.com',
     );
+  });
+
+  it('getProfile sets isApproved=true when user has an accepted solicitation (papel not updated)', async () => {
+    // user is still VISITANTE but has an accepted solicitation in the DB
+    const req: any = {
+      user: {
+        id: 99,
+        login: 'pending-admin-created',
+        nome: 'Pending',
+        papel: 'VISITANTE',
+        criadoEm: new Date().toISOString(),
+        atualizadoEm: new Date().toISOString(),
+      },
+    };
+    mockUsuarios.findOne.mockResolvedValueOnce(null);
+    mockSolicitacoes.listOwn.mockResolvedValueOnce([
+      { id: 3, usuarioId: 99, status: StatusSolicitacao.ACEITA },
+    ]);
+
+    const res: any = await controller.getProfile(req);
+    expect(res.isApproved).toBe(true);
+  });
+
+  it('getProfile uses DB papel when token is stale (admin changed role)', async () => {
+    const req: any = {
+      user: {
+        id: 77,
+        login: 'stale-token',
+        nome: 'Stale',
+        papel: 'VISITANTE',
+        criadoEm: new Date().toISOString(),
+        atualizadoEm: new Date().toISOString(),
+      },
+    };
+
+    // DB shows the up-to-date papel even though token is stale
+    mockUsuarios.findOne.mockResolvedValueOnce({
+      id: 77,
+      login: 'stale-token',
+      nome: 'Stale',
+      papel: 'PROFESSOR',
+      criadoEm: new Date().toISOString(),
+      atualizadoEm: new Date().toISOString(),
+    });
+    mockSolicitacoes.listOwn.mockResolvedValueOnce([]);
+
+    const res: any = await controller.getProfile(req);
+    expect(res.papel).toBe('PROFESSOR');
+    expect(res.isApproved).toBe(true);
+  });
+
+  it('getProfile treats TECNICO_ADMINISTRATIVO as approved (fast path)', async () => {
+    const req: any = {
+      user: {
+        id: 56,
+        login: 'tech',
+        nome: 'Tech',
+        papel: 'TECNICO_ADMINISTRATIVO',
+        criadoEm: new Date().toISOString(),
+        atualizadoEm: new Date().toISOString(),
+      },
+    };
+    mockSolicitacoes.listOwn.mockResolvedValueOnce([]);
+
+    const res: any = await controller.getProfile(req);
+    expect(res.isApproved).toBe(true);
   });
 });

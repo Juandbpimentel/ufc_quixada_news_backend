@@ -74,10 +74,14 @@ describe('SolicitacoesService', () => {
     expect(res.status).toBe(StatusSolicitacao.PENDENTE);
   });
 
-  it("listOwn returns user's solicitation", async () => {
-    mockPrisma.solicitacao.findUnique.mockResolvedValueOnce({ id: 4 });
+  it("listOwn returns user's solicitation as an array", async () => {
+    mockPrisma.solicitacao.findUnique.mockResolvedValueOnce({
+      id: 4,
+      usuarioId: 4,
+    });
     const res = await service.listOwn(4);
-    expect(res).toHaveProperty('id', 4);
+    expect(Array.isArray(res)).toBe(true);
+    expect(res[0]).toHaveProperty('id', 4);
   });
 
   it('listPendingFor returns array', async () => {
